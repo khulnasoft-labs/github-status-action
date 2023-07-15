@@ -1,0 +1,7 @@
+types-pytz
+types-python-dateutil
+types-requests
+pandas-stubs
+mypy
+flake8
+black
