@@ -1,0 +1,47 @@
+GIT_COMMIT_HASH ?= $(shell git rev-parse --short=9 HEAD)
+
+BASE_IMAGE_NAME = khulnasoft-lab/github-status-action-base
+NEW_BASE_IMAGE_NAME = khulnasoft-lab/github-status-action-base:$(GIT_COMMIT_HASH)
+CI_IMAGE = khulnasoft-lab/github-status-action-ci:$(GIT_COMMIT_HASH)
+
+.PHONY: new-base-image
+new-base-image:
+	docker build -f base.Dockerfile . -t $(NEW_BASE_IMAGE_NAME)
+
+.PHONY: new-base-image-push
+new-base-image-push:
+	docker push $(NEW_BASE_IMAGE_NAME)
+
+.PHONY: ci-image
+ci-image:
+	docker build -f ci.Dockerfile . -t $(CI_IMAGE)
+
+
+# This is for testing the container image build based on Dockerfile, as
+# executed by GH actions: `Dockerfile` at the root of the repository defines
+# the container image that GH actions uses to spawn a container from when
+# others use this GH action.
+.PHONY: action-image
+action-image:
+	docker build -f Dockerfile . -t khulnasoft-lab/github-status-action:local
+
+.PHONY: clitests
+clitests: ci-image
+	time docker run -v /tmp:/tmp -u $(shell id -u ${USER}):$(shell id -g ${USER}) --entrypoint "/bin/bash" -v $(shell pwd):/cwd $(CI_IMAGE) \
+		-c "cd /cwd && bats \
+			--print-output-on-failure \
+			--no-tempdir-cleanup \
+			--timing \
+			--jobs 5 \
+			tests/*.bats \
+		"
+
+.PHONY: lint
+lint: ci-image
+	docker run -v $(shell pwd):/checkout $(CI_IMAGE) bash -c "flake8 analyze.py fetch.py pdf.py"
+	docker run -v $(shell pwd):/checkout $(CI_IMAGE) bash -c "black --check analyze.py fetch.py pdf.py"
+	docker run -v $(shell pwd):/checkout $(CI_IMAGE) bash -c "mypy analyze.py fetch.py"
+
+.PHONY: black
+black: ci-image
+	docker run -v $(shell pwd):/checkout $(CI_IMAGE) bash -c "black analyze.py fetch.py pdf.py"
